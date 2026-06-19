@@ -1,0 +1,32 @@
+# === Tajné hodnoty — NIKDY necommitovat ===
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+ENV/
+
+# Test / nástroje
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Claude Code lokální nastavení
+.claude/settings.local.json
+
+# POZN: data/seen.json se NEignoruje — je to stav, který v Milníku 6
+# commituje bot v rámci GitHub Actions.

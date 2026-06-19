@@ -1,0 +1,94 @@
+# Cílení pro ARES (Fáze 1). Vše editovatelné.
+#
+# === DŮLEŽITÁ omezení ARES API (ověřeno proti živému API, viz README) ===
+#  - vyhledávací filtr NEumí kraj/okres ani datum vzniku a NEumí řadit podle data
+#  - nejmenší územní filtr je OBEC (kodObce); velká města lze zúžit na
+#    městskou část (kodMestskeCastiObvodu)
+#  - jeden dotaz smí vrátit max 1000 záznamů (na CELKOVÝ počet shod), jinak ho
+#    ARES odmítne -> segment (lokalita × NACE) musí mít v historii < 1000 firem
+#
+# Strategie: pro každý segment (lokalita × NACE) stáhneme vše a klientsky
+# ponecháme jen firmy s datumVzniku v posledních `max_age_days` dnech.
+# Kraj se kontroluje až klientsky přes `kraj_codes` (kodKraje z odpovědi).
+
+# Klientská kontrola kraje (kodKraje z odpovědi ARES). 116 = Jihomoravský kraj.
+# Prázdný seznam = bez kontroly kraje.
+kraj_codes: [116]
+
+# Stáří firmy ve dnech pro označení "nové".
+# 60 dní: ARES propisuje nové firmy s ~30denním zpožděním, takže přesně 30denní
+# okno v praxi nechytí skoro nic. Přepsat lze i přes env MAX_AGE_DAYS.
+max_age_days: 60
+
+# Lokality. Každá má `filter` = fragment AdresaFiltr (kodObce nebo
+# kodMestskeCastiObvodu) a popisný `name`.
+localities:
+  - name: "Brno"
+    filter: { kodObce: 582786 }
+    # Když segment "Brno × NACE" přeteče strop 1000 (typicky restaurace 56110),
+    # klient automaticky projede tyto městské části zvlášť. (27 z 29 MČ; chybí jen
+    # drobné Útěchov a Ořešín bez gastra. Pozn.: i Brno-střed × restaurace je přes
+    # strop a přeskočí se — to by chtělo ještě jemnější dělení na části obce.)
+    mestske_casti:
+      - 550973  # Brno-střed
+      - 550990  # Brno-Žabovřesky
+      - 551007  # Brno-Královo Pole
+      - 551031  # Brno-sever
+      - 551058  # Brno-Židenice
+      - 551066  # Brno-Černovice
+      - 551074  # Brno-jih
+      - 551082  # Brno-Bohunice
+      - 551091  # Brno-Starý Lískovec
+      - 551112  # Brno-Nový Lískovec
+      - 551147  # Brno-Kohoutovice
+      - 551171  # Brno-Jundrov
+      - 551198  # Brno-Bystrc
+      - 551210  # Brno-Kníničky
+      - 551228  # Brno-Komín
+      - 551236  # Brno-Medlánky
+      - 551244  # Brno-Řečkovice a Mokrá Hora
+      - 551252  # Brno-Maloměřice a Obřany
+      - 551279  # Brno-Vinohrady
+      - 551287  # Brno-Líšeň
+      - 551295  # Brno-Slatina
+      - 551309  # Brno-Tuřany
+      - 551317  # Brno-Chrlice
+      - 551325  # Brno-Bosonohy
+      - 551368  # Brno-Žebětín
+      - 551376  # Brno-Ivanovice
+      - 551406  # Brno-Jehnice
+  - name: "Troubsko"
+    filter: { kodObce: 584029 }
+  - name: "Adamov"
+    filter: { kodObce: 581291 }
+
+# CZ-NACE 2025 (5místné kódy). Ověřeno, že v Brně vracejí data pod stropem 1000.
+# Doleď podle potřeby; kódy se ověřují proti reálnému API (viz README).
+nace:
+  - code: "56300"   # Pohostinství – bary, výčepy, kavárny (sweet spot: kavárny)
+    label: "Bary a kavárny"
+  - code: "56210"   # Poskytování cateringových služeb
+    label: "Catering"
+  - code: "10710"   # Výroba pekařských a cukrářských výrobků
+    label: "Pekařství a cukrářství"
+  - code: "10520"   # Výroba zmrzliny
+    label: "Zmrzlina"
+  - code: "11050"   # Výroba piva (minipivovary)
+    label: "Pivovary"
+  - code: "11020"   # Výroba vína z hroznů
+    label: "Vinařství"
+  - code: "10130"   # Výroba masných výrobků
+    label: "Masná výroba"
+  - code: "20420"   # Výroba parfémů a toaletních přípravků
+    label: "Kosmetika (výroba)"
+  - code: "47750"   # Maloobchod s kosmetickými a toaletními výrobky
+    label: "Kosmetika (prodejny)"
+  - code: "47710"   # Maloobchod s oděvy
+    label: "Móda – oděvy"
+  - code: "47610"   # Maloobchod s knihami
+    label: "Knihkupectví"
+  - code: "32130"   # Výroba bižuterie a příbuzných výrobků
+    label: "Bižuterie a šperky"
+  # POZOR: restaurace v Brně překračují strop 1000 -> řeš přes městskou část.
+  - code: "56110"   # Stravování v restauracích
+    label: "Restaurace"

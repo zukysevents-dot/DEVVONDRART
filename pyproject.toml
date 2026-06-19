@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vondrart-leads"
+version = "0.1.0"
+description = "Denní lead-finder pro vondrart studio (ARES -> scoring -> e-mail digest)"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27",
+    "anthropic>=0.40",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "python-dotenv>=1.0",
+    "jinja2>=3.1",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+# Projekt má "src layout" s moduly v src/ a main.py v rootu.
+# Balíčky pro editovatelnou instalaci (`pip install -e .`):
+[tool.setuptools]
+packages = ["src", "src.sources"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
