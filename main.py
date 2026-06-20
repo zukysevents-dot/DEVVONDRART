@@ -28,6 +28,7 @@ from src.notify import (
 from src.scoring import Scorer
 from src.sources.ares import AresSource
 from src.sources.base import Source
+from src.sources.webtrh import WebtrhSource
 from src.storage import SeenStore
 
 logger = logging.getLogger(__name__)
@@ -50,25 +51,42 @@ def setup_logging() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
 
+def build_sources(targets: Targets, today: date) -> list[Source]:
+    """Sestaví seznam zdrojů dle konfigurace (ARES vždy; Webtrh když je zapnutý)."""
+    sources: list[Source] = [AresSource(targets, today=today)]
+    if targets.webtrh.enabled:
+        sources.append(
+            WebtrhSource(
+                listing_path=targets.webtrh.listing_path,
+                max_age_days=targets.max_age_days,
+                today=today,
+            )
+        )
+    return sources
+
+
 def run(
     settings: Settings,
     targets: Targets,
     *,
     today: date,
-    source: Source | None = None,
+    sources: list[Source] | None = None,
     store: SeenStore | None = None,
     scorer: Scorer | None = None,
     smtp_factory: Optional[Callable] = None,
 ) -> RunReport:
     """Projede celou pipeline a vrátí přehled běhu."""
-    # 1) Sběr leadů ze zdroje.
-    created_source = source is None
-    source = source or AresSource(targets, today=today)
+    # 1) Sběr leadů ze všech zdrojů.
+    created_sources = sources is None
+    sources = sources if sources is not None else build_sources(targets, today)
+    leads = []
     try:
-        leads = source.fetch()
+        for src in sources:
+            leads.extend(src.fetch())
     finally:
-        if created_source:
-            source.client.close()  # type: ignore[attr-defined]
+        if created_sources:
+            for src in sources:
+                src.close()
 
     # 2) Deduplikace proti uloženému stavu.
     store = store or SeenStore(resolve_path(settings.seen_path))

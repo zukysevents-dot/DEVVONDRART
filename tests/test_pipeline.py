@@ -79,7 +79,7 @@ def test_pipeline_sends_digest_and_persists_then_dedups(tmp_path):
     # 1. běh: odešle digest, oskóruje, uloží stav
     report = app.run(
         _settings(), _targets(), today=date(2026, 6, 20),
-        source=FakeSource(leads), store=SeenStore(seen),
+        sources=[FakeSource(leads)], store=SeenStore(seen),
         scorer=Scorer("PROFIL", stub_complete, sleep=lambda _s: None),
         smtp_factory=smtp_factory,
     )
@@ -94,7 +94,7 @@ def test_pipeline_sends_digest_and_persists_then_dedups(tmp_path):
     # 2. běh: stav z disku -> nic nového, nic se neodesílá
     report2 = app.run(
         _settings(), _targets(), today=date(2026, 6, 20),
-        source=FakeSource(leads), store=SeenStore(seen),
+        sources=[FakeSource(leads)], store=SeenStore(seen),
         scorer=Scorer("PROFIL", stub_complete, sleep=lambda _s: None),
         smtp_factory=smtp_factory,
     )
@@ -112,7 +112,7 @@ def test_pipeline_failed_send_does_not_persist(tmp_path):
 
     report = app.run(
         _settings(), _targets(), today=date(2026, 6, 20),
-        source=FakeSource(leads), store=SeenStore(seen),
+        sources=[FakeSource(leads)], store=SeenStore(seen),
         scorer=Scorer("PROFIL", stub_complete, sleep=lambda _s: None),
         smtp_factory=boom,
     )

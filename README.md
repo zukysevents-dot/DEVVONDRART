@@ -133,6 +133,52 @@ oslovení** a odkaz do ARES. Leady pod prahem `score_threshold` se do digestu ne
 - Stav `seen.json` se zapíše **až po úspěšném odeslání** — když odeslání selže, leady se
   zkusí příště (nic se neztratí).
 
+## Druhý zdroj — Webtrh poptávky (Fáze 2)
+
+[src/sources/webtrh.py](src/sources/webtrh.py) přidává **inbound leady** z poptávek na
+grafiku/design na webtrh.cz. Architektura zdrojů je pluginovatelná (`src/sources/base.py`),
+takže Webtrh běží stejnou pipeline (dedup → scoring → digest) jako ARES.
+
+- **Default vypnuto.** Zapni v `config/targets.yaml`:
+  ```yaml
+  webtrh:
+    enabled: true
+  ```
+- Webtrh **nemá funkční RSS** (ověřeno), proto se čte **jeden výpis kategorie** poptávek
+  (název, odkaz, kategorie, rozpočet, relativní datum). Žádný agresivní crawl.
+- **Právně ověřeno:** `robots.txt` zakazuje jen `/wp-admin/`; podmínky užívání nezakazují
+  automatizovaný přístup (omezují jen *vkládání* obsahu). Slušný User-Agent, jeden GET.
+
+## Nasazení (GitHub Actions)
+
+Workflow [.github/workflows/daily.yml](.github/workflows/daily.yml) běží **denně přes cron**
+(`0 6 * * *` = 06:00 UTC; GitHub cron je v UTC a může se opozdit) a jde spustit i ručně
+přes **workflow_dispatch**. Krok za krokem: checkout → setup Python 3.11 → `pip install -e .`
+→ `python main.py` → **commit aktualizovaného `data/seen.json` zpět do repa** (bot,
+`permissions: contents: write`).
+
+### Nastavení GitHub Secrets (tajné hodnoty jen sem, ne do kódu)
+
+V **GitHub → Settings → Secrets and variables → Actions → New repository secret**, nebo
+přes `gh` (hodnotu zadáš skrytě, nikam ji nevkládej do chatu):
+
+```bash
+gh secret set ANTHROPIC_API_KEY     # klíč z console.anthropic.com
+gh secret set SMTP_HOST
+gh secret set SMTP_USER
+gh secret set SMTP_PASSWORD
+gh secret set DIGEST_FROM           # odesílatel
+gh secret set DIGEST_TO             # příjemce digestu
+# volitelné (mají rozumný default):
+gh secret set SMTP_PORT             # default 587 (465 = SSL)
+gh secret set SMTP_USE_TLS          # default true
+gh secret set ANTHROPIC_MODEL       # default claude-sonnet-4-6
+```
+
+Bez nastavených secrets workflow **nespadne** — jen poběží v náhledovém režimu (bez scoringu
+a bez odeslání). Po nastavení otestuj ručně: **Actions → daily-leads → Run workflow**
+(nebo `gh workflow run daily-leads`).
+
 ## Otevřené otázky / co ověřit
 
 Ověřeno proti živému ARES API (ne z paměti) — a narazili jsme na omezení, která
@@ -165,6 +211,10 @@ určují celý návrh sběru:
 7. **Pokrytí celého kraje** (ne jen vybraných obcí) by vyžadovalo statický seznam
    obcí JMK, případně bulk open-data export ARES. Zatím cílíme na vyjmenované obce
    (default: Brno (27 z 29 MČ) + okolí) — rozšiřitelné v `targets.yaml`.
+8. **Webtrh:** u některých „Redakčních" poptávek chybí ve výpisu kategorie nebo datum
+   (jiná struktura bloku) — lead se i tak vytvoří (dedup řeší „nové"). Pro plný popis
+   k scoringu by šlo dotáhnout detail poptávky, ale to znamená víc requestů; zatím
+   držíme lehký jeden-GET přístup.
 
 ## Právo a GDPR
 
@@ -180,5 +230,5 @@ podklady a o oslovení rozhoduje člověk. Klíče se **nikdy** necommitují (`.
 3. ✅ **Scoring** (Claude API, JSON výstup, retry)
 4. ✅ **Digest e-mail** (Jinja2 + SMTP)
 5. ✅ **Lokální end-to-end běh** (`python main.py` projede celou pipeline)
-6. ⬜ GitHub Actions (cron + commit stavu + Secrets)
-7. ⬜ (Fáze 2) Webtrh poptávky jako druhý zdroj
+6. ✅ **GitHub Actions** (cron + commit stavu + Secrets)
+7. ✅ **(Fáze 2)** Webtrh poptávky jako druhý zdroj

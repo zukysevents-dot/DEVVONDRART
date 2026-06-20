@@ -97,3 +97,10 @@ nace:
   # POZOR: restaurace v Brně překračují strop 1000 -> řeš přes městskou část.
   - code: "56110"   # Stravování v restauracích
     label: "Restaurace"
+
+# Fáze 2 — Webtrh poptávky (druhý zdroj, inbound). Default vypnuto; zapni `enabled: true`,
+# až budeš chtít sledovat i poptávky na grafiku/design. (Webtrh nemá RSS; čte se jeden
+# výpis kategorie, robots.txt i podmínky to dovolují.)
+webtrh:
+  enabled: false
+  listing_path: "/poptavky/poptavky-designu-fotografovani-a-videa/"

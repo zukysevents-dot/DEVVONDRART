@@ -30,6 +30,13 @@ class NaceItem(BaseModel):
     label: str
 
 
+class WebtrhConfig(BaseModel):
+    """Fáze 2 — Webtrh poptávky (druhý zdroj). Default vypnuto."""
+
+    enabled: bool = False
+    listing_path: str = "/poptavky/poptavky-designu-fotografovani-a-videa/"
+
+
 class Targets(BaseModel):
     """Obsah config/targets.yaml."""
 
@@ -42,6 +49,7 @@ class Targets(BaseModel):
     score_threshold: int = 5
     localities: list[Locality] = Field(default_factory=list)
     nace: list[NaceItem] = Field(default_factory=list)
+    webtrh: WebtrhConfig = Field(default_factory=WebtrhConfig)
 
 
 class Settings(BaseSettings):

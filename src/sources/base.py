@@ -18,3 +18,6 @@ class Source(ABC):
     def fetch(self) -> list[Lead]:
         """Stáhne a vrátí normalizované leady z tohoto zdroje."""
         raise NotImplementedError
+
+    def close(self) -> None:
+        """Uvolní případné zdroje (HTTP klient). Výchozí implementace nic nedělá."""

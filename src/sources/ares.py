@@ -157,6 +157,9 @@ class AresSource(Source):
         self.client = client or AresClient()
         self.today = today or date.today()
 
+    def close(self) -> None:
+        self.client.close()
+
     def _fetch_segment(self, loc: Locality, nace_code: str, nace_label: str) -> list[dict[str, Any]]:
         """Stáhne raw záznamy pro lokalitu × NACE. Při přetečení stropu 1000 automaticky
         zúží na nakonfigurované městské části (`loc.mestske_casti`)."""
