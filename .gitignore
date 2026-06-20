@@ -28,5 +28,8 @@ Thumbs.db
 # Claude Code lokální nastavení
 .claude/settings.local.json
 
+# Náhled digestu (runtime artefakt, ne stav)
+data/digest_preview.html
+
 # POZN: data/seen.json se NEignoruje — je to stav, který v Milníku 6
 # commituje bot v rámci GitHub Actions.

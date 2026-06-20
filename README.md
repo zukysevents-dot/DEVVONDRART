@@ -119,6 +119,20 @@ Ostrý test scoringu (po vyplnění `.env`):
 $env:MAX_AGE_DAYS=90; python main.py   # u každého leadu uvidíš skóre, důvod a návrh oslovení
 ```
 
+## Digest e-mail (SMTP)
+
+Modul [src/notify.py](src/notify.py) + šablona [templates/digest.html.j2](templates/digest.html.j2)
+sestaví **denní HTML e-mail v češtině**: nahoře shrnutí (kolik nových, kolik nad prahem),
+pak karty leadů seřazené podle skóre — název, skóre, obor/region/datum, důvod, **návrh
+oslovení** a odkaz do ARES. Leady pod prahem `score_threshold` se do digestu nedostanou.
+
+- Odesílá se přes **SMTP** (`SMTP_HOST/PORT/USER/PASSWORD`, `SMTP_USE_TLS`; port 465 = SSL,
+  jinak STARTTLS). Odesílatel `DIGEST_FROM`, příjemce `DIGEST_TO`.
+- **Bez SMTP** se e-mail neodesílá — místo toho se uloží **náhled** do
+  `data/digest_preview.html` (otevři v prohlížeči). Stav se v náhledovém režimu neukládá.
+- Stav `seen.json` se zapíše **až po úspěšném odeslání** — když odeslání selže, leady se
+  zkusí příště (nic se neztratí).
+
 ## Otevřené otázky / co ověřit
 
 Ověřeno proti živému ARES API (ne z paměti) — a narazili jsme na omezení, která
@@ -164,7 +178,7 @@ podklady a o oslovení rozhoduje člověk. Klíče se **nikdy** necommitují (`.
 1. ✅ **Skeleton + ARES klient**
 2. ✅ **Dedup + storage** (`data/seen.json`, cold start)
 3. ✅ **Scoring** (Claude API, JSON výstup, retry)
-4. ⬜ Digest e-mail (Jinja2 + SMTP)
+4. ✅ **Digest e-mail** (Jinja2 + SMTP)
 5. ⬜ Lokální end-to-end běh
 6. ⬜ GitHub Actions (cron + commit stavu + Secrets)
 7. ⬜ (Fáze 2) Webtrh poptávky jako druhý zdroj

@@ -4,6 +4,7 @@ Hotové milníky:
   M1 — sběr nových firem z ARES
   M2 — deduplikace proti data/seen.json + cold start
   M3 — scoring přes Claude API
+  M4 — HTML e-mailový digest přes SMTP
 
 Spuštění:
     python main.py
@@ -14,6 +15,13 @@ import logging
 from datetime import date
 
 from src.config import Settings, load_profile, load_targets, resolve_path
+from src.notify import (
+    build_subject,
+    build_summary,
+    render_digest,
+    select_for_digest,
+    send_digest,
+)
 from src.scoring import Scorer
 from src.sources.ares import AresSource
 from src.storage import SeenStore
@@ -63,21 +71,36 @@ def main() -> None:
     elif selection.to_notify:
         logger.warning("ANTHROPIC_API_KEY není nastaven — scoring přeskočen (leady bez skóre).")
 
-    # (M4 doplní e-mailový digest; práh skóre targets.score_threshold.)
-    for lead in selection.to_notify:
-        score = f"skóre {lead.score}/10" if lead.score is not None else "bez skóre"
-        print(f"[{lead.date}] {lead.name}  (IČO {lead.external_id}) — {score}")
-        print(f"    obor: {lead.obor or '-'} | NACE {', '.join(lead.nace) or '-'} | {lead.region or '-'}")
-        if lead.reason:
-            print(f"    proč: {lead.reason}")
-        if lead.outreach_draft:
-            print(f"    návrh oslovení: {lead.outreach_draft}")
-        print(f"    {lead.url}")
+    # M4 — sestavení digestu (řazeno dle skóre, odfiltrování pod prahem)
+    digest_leads = select_for_digest(selection.to_notify, targets.score_threshold)
+    summary = build_summary(today, selection.to_notify, digest_leads, targets.score_threshold)
+    html = render_digest(digest_leads, summary)
+    subject = build_subject(summary)
+    print(f"Digest: {summary.shown} k zobrazení (nad prahem {summary.above_threshold}, práh {summary.threshold}).")
 
-    # Stav se zapisuje až po zpracování běhu (v dalších milnících až po odeslání digestu).
-    store.mark_seen(selection.new, today)
-    store.save(today)
-    print(f"\nStav uložen: celkem viděno {store.seen_count} firem ({store.path}).")
+    # Odeslání přes SMTP, nebo náhled do souboru když SMTP není nastaveno.
+    delivered = False
+    if settings.smtp_host and settings.digest_to:
+        try:
+            send_digest(html, subject, settings)
+            print(f"Digest odeslán na {settings.digest_to}: {subject}")
+            delivered = True
+        except Exception as exc:  # neúspěch nesmí ztratit leady
+            logger.error("Odeslání digestu selhalo (%s) — stav neukládám, zkusí se příště.", exc)
+    else:
+        preview = resolve_path("data/digest_preview.html")
+        preview.write_text(html, encoding="utf-8")
+        logger.warning(
+            "SMTP/adresát nenastaven — digest neodeslán (náhledový režim). Náhled: %s", preview
+        )
+
+    # Stav uložíme jen po skutečném odeslání (jinak se leady zkusí příště).
+    if delivered:
+        store.mark_seen(selection.new, today)
+        store.save(today)
+        print(f"Stav uložen: celkem viděno {store.seen_count} firem ({store.path}).")
+    else:
+        logger.info("Stav neuložen (digest neodeslán / náhledový režim).")
 
 
 if __name__ == "__main__":
