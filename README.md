@@ -99,6 +99,26 @@ Zpracovaná `external_id` (klíč `source:external_id`, u ARES `ares:<IČO>`) se
 - Soubor je v Milníku 6 commitován zpět do repa botem (GitHub Actions runner je ephemeral).
 - Stav se zapisuje až po zpracování běhu (od Milníku 4/5 až po odeslání digestu).
 
+## Scoring (Claude API)
+
+Modul [src/scoring.py](src/scoring.py) pošle každý nový lead na Claude (`claude-sonnet-4-6`,
+konfigurovatelné přes `ANTHROPIC_MODEL`). Profil studia z `config/profile.md` se vkládá do
+system promptu. Model vrací **striktní JSON**:
+
+```json
+{"score": 1-10, "reason": "jedna věta proč se (ne)hodí", "outreach_draft": "návrh prvního oslovení"}
+```
+
+Výstup se bezpečně parsuje (odolný vůči markdownu/textu navíc, skóre se ořízne na 1–10),
+rate-limit a přechodné chyby se opakují s exponenciálním backoffem. Bez `ANTHROPIC_API_KEY`
+se scoring přeskočí (leady zůstanou bez skóre). Práh `score_threshold` (default 5) využije
+digest v Milníku 4. **Nic se neodesílá leadům** — drafty jen připraví, oslovení řeší člověk.
+
+Ostrý test scoringu (po vyplnění `.env`):
+```powershell
+$env:MAX_AGE_DAYS=90; python main.py   # u každého leadu uvidíš skóre, důvod a návrh oslovení
+```
+
 ## Otevřené otázky / co ověřit
 
 Ověřeno proti živému ARES API (ne z paměti) — a narazili jsme na omezení, která
@@ -143,7 +163,7 @@ podklady a o oslovení rozhoduje člověk. Klíče se **nikdy** necommitují (`.
 
 1. ✅ **Skeleton + ARES klient**
 2. ✅ **Dedup + storage** (`data/seen.json`, cold start)
-3. ⬜ Scoring (Claude API, JSON výstup, retry)
+3. ✅ **Scoring** (Claude API, JSON výstup, retry)
 4. ⬜ Digest e-mail (Jinja2 + SMTP)
 5. ⬜ Lokální end-to-end běh
 6. ⬜ GitHub Actions (cron + commit stavu + Secrets)

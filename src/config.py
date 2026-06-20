@@ -38,6 +38,8 @@ class Targets(BaseModel):
     # Pojistka proti zahlcení (hlavně cold start): max počet nových leadů na běh,
     # které se notifikují; zbytek se označí jako viděný bez notifikace.
     max_new_per_run: int = 100
+    # Práh skóre pro digest (M4): leady pod prahem se odfiltrují / spadnou dolů.
+    score_threshold: int = 5
     localities: list[Locality] = Field(default_factory=list)
     nace: list[NaceItem] = Field(default_factory=list)
 
@@ -66,8 +68,9 @@ class Settings(BaseSettings):
     digest_from: Optional[str] = None
     digest_to: Optional[str] = None
 
-    # Cesta ke konfiguraci cílení, stav a volitelná přepsání.
+    # Cesta ke konfiguraci cílení, profilu, stav a volitelná přepsání.
     targets_path: str = "config/targets.yaml"
+    profile_path: str = "config/profile.md"
     seen_path: str = "data/seen.json"
     max_age_days: Optional[int] = None
     max_new_per_run: Optional[int] = None
@@ -90,3 +93,9 @@ def load_targets(settings: Settings | None = None) -> Targets:
     if settings.max_new_per_run is not None:
         targets.max_new_per_run = settings.max_new_per_run
     return targets
+
+
+def load_profile(settings: Settings | None = None) -> str:
+    """Načte text profilu studia (vstupuje do system promptu scoringu)."""
+    settings = settings or Settings()
+    return resolve_path(settings.profile_path).read_text(encoding="utf-8").strip()
