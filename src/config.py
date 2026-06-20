@@ -35,6 +35,9 @@ class Targets(BaseModel):
 
     kraj_codes: list[int] = Field(default_factory=list)
     max_age_days: int = 30
+    # Pojistka proti zahlcení (hlavně cold start): max počet nových leadů na běh,
+    # které se notifikují; zbytek se označí jako viděný bez notifikace.
+    max_new_per_run: int = 100
     localities: list[Locality] = Field(default_factory=list)
     nace: list[NaceItem] = Field(default_factory=list)
 
@@ -63,19 +66,27 @@ class Settings(BaseSettings):
     digest_from: Optional[str] = None
     digest_to: Optional[str] = None
 
-    # Cesta ke konfiguraci cílení a volitelné přepsání stáří firem.
+    # Cesta ke konfiguraci cílení, stav a volitelná přepsání.
     targets_path: str = "config/targets.yaml"
+    seen_path: str = "data/seen.json"
     max_age_days: Optional[int] = None
+    max_new_per_run: Optional[int] = None
+
+
+def resolve_path(value: str) -> Path:
+    """Relativní cesty bere vůči kořeni projektu, absolutní nechá být."""
+    path = Path(value)
+    return path if path.is_absolute() else ROOT / path
 
 
 def load_targets(settings: Settings | None = None) -> Targets:
     """Načte a zvaliduje targets.yaml. ENV `MAX_AGE_DAYS` má přednost před souborem."""
     settings = settings or Settings()
-    path = Path(settings.targets_path)
-    if not path.is_absolute():
-        path = ROOT / path
+    path = resolve_path(settings.targets_path)
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     targets = Targets(**data)
     if settings.max_age_days is not None:
         targets.max_age_days = settings.max_age_days
+    if settings.max_new_per_run is not None:
+        targets.max_new_per_run = settings.max_new_per_run
     return targets

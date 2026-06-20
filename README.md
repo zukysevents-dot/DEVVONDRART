@@ -36,7 +36,7 @@ src/
 config/
   profile.md       # profil studia (vstupuje do scoringu)
   targets.yaml     # kraj/obce + NACE + stáří firem
-data/              # seen.json (přibude v Milníku 2)
+data/              # seen.json — stav deduplikace (vytvoří se za běhu)
 tests/
 main.py            # orchestrace pipeline
 pyproject.toml
@@ -88,6 +88,17 @@ ponechá jen firmy s `datumVzniku` v posledních `max_age_days` dnech. Když seg
 přeteče strop 1000 (typicky gastro ve velkém městě), klient **automaticky zúží
 dotaz na nakonfigurované městské části** (`mestske_casti` u lokality v `targets.yaml`).
 
+## Stav a deduplikace (`data/seen.json`)
+
+Zpracovaná `external_id` (klíč `source:external_id`, u ARES `ares:<IČO>`) se ukládají do
+`data/seen.json`, aby stejný lead nechodil v digestu dokola. Zápis je atomický.
+
+- **Cold start (první běh):** stav je prázdný → vše v okně je „nové". Pojistka
+  `max_new_per_run` (default 100, env `MAX_NEW_PER_RUN`) omezí počet notifikovaných na
+  běh; přebytek se označí jako viděný bez notifikace, aby první digest nebyl o stovkách.
+- Soubor je v Milníku 6 commitován zpět do repa botem (GitHub Actions runner je ephemeral).
+- Stav se zapisuje až po zpracování běhu (od Milníku 4/5 až po odeslání digestu).
+
 ## Otevřené otázky / co ověřit
 
 Ověřeno proti živému ARES API (ne z paměti) — a narazili jsme na omezení, která
@@ -131,7 +142,7 @@ podklady a o oslovení rozhoduje člověk. Klíče se **nikdy** necommitují (`.
 ## Roadmap (milníky)
 
 1. ✅ **Skeleton + ARES klient**
-2. ⬜ Dedup + storage (`data/seen.json`, cold start)
+2. ✅ **Dedup + storage** (`data/seen.json`, cold start)
 3. ⬜ Scoring (Claude API, JSON výstup, retry)
 4. ⬜ Digest e-mail (Jinja2 + SMTP)
 5. ⬜ Lokální end-to-end běh

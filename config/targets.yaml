@@ -20,6 +20,11 @@ kraj_codes: [116]
 # okno v praxi nechytí skoro nic. Přepsat lze i přes env MAX_AGE_DAYS.
 max_age_days: 60
 
+# Pojistka proti zahlcení (hlavně první/cold-start běh): kolik nejnovějších nových
+# leadů na běh se notifikuje. Zbytek se označí jako viděný bez notifikace.
+# Přepsat lze přes env MAX_NEW_PER_RUN.
+max_new_per_run: 100
+
 # Lokality. Každá má `filter` = fragment AdresaFiltr (kodObce nebo
 # kodMestskeCastiObvodu) a popisný `name`.
 localities:
