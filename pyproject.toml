@@ -29,3 +29,4 @@ packages = ["src", "src.sources"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]

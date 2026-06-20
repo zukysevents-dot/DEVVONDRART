@@ -1,10 +1,10 @@
-"""Orchestrace pipeline.
+"""Orchestrace celé pipeline.
 
-Hotové milníky:
-  M1 — sběr nových firem z ARES
-  M2 — deduplikace proti data/seen.json + cold start
-  M3 — scoring přes Claude API
-  M4 — HTML e-mailový digest přes SMTP
+    ARES (sběr) -> dedup (seen.json) -> scoring (Claude) -> digest (e-mail/SMTP)
+
+Logika běhu je v `run()` se vstřikovatelnými závislostmi (zdroj, stav, scorer, SMTP),
+takže celá pipeline jde otestovat bez sítě. `main()` jen sestaví reálné komponenty
+z konfigurace a běh spustí.
 
 Spuštění:
     python main.py
@@ -12,9 +12,12 @@ Spuštění:
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
+from typing import Callable, Optional
 
-from src.config import Settings, load_profile, load_targets, resolve_path
+from src.config import Settings, Targets, load_profile, load_targets, resolve_path
 from src.notify import (
     build_subject,
     build_summary,
@@ -24,11 +27,99 @@ from src.notify import (
 )
 from src.scoring import Scorer
 from src.sources.ares import AresSource
+from src.sources.base import Source
 from src.storage import SeenStore
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class RunReport:
+    cold_start: bool
+    window_count: int       # firem ve výběrovém okně
+    new_count: int          # dosud neviděných
+    skipped: int            # oříznuto limitem na běh
+    digest_shown: int       # v digestu (po prahu)
+    above_threshold: int    # se skóre nad prahem
+    delivered: bool         # digest odeslán e-mailem
+    preview_path: Optional[Path]  # cesta k náhledu (náhledový režim)
+    subject: str
 
 
 def setup_logging() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+
+
+def run(
+    settings: Settings,
+    targets: Targets,
+    *,
+    today: date,
+    source: Source | None = None,
+    store: SeenStore | None = None,
+    scorer: Scorer | None = None,
+    smtp_factory: Optional[Callable] = None,
+) -> RunReport:
+    """Projede celou pipeline a vrátí přehled běhu."""
+    # 1) Sběr leadů ze zdroje.
+    created_source = source is None
+    source = source or AresSource(targets, today=today)
+    try:
+        leads = source.fetch()
+    finally:
+        if created_source:
+            source.client.close()  # type: ignore[attr-defined]
+
+    # 2) Deduplikace proti uloženému stavu.
+    store = store or SeenStore(resolve_path(settings.seen_path))
+    selection = store.select_new(leads, targets.max_new_per_run)
+
+    # 3) Scoring (vstřikovaný scorer; jinak z konfigurace, pokud je klíč).
+    if scorer is None and settings.anthropic_api_key:
+        scorer = Scorer.from_settings(settings, load_profile(settings))
+    if scorer is not None and selection.to_notify:
+        scorer.score_leads(selection.to_notify)
+    elif selection.to_notify and not settings.anthropic_api_key:
+        logger.warning("ANTHROPIC_API_KEY není nastaven — scoring přeskočen (leady bez skóre).")
+
+    # 4) Sestavení digestu (řazeno dle skóre, odfiltrování pod prahem).
+    digest_leads = select_for_digest(selection.to_notify, targets.score_threshold)
+    summary = build_summary(today, selection.to_notify, digest_leads, targets.score_threshold)
+    html = render_digest(digest_leads, summary)
+    subject = build_subject(summary)
+
+    # 5) Odeslání e-mailem, nebo náhled do souboru když SMTP není nastaveno.
+    delivered = False
+    preview_path: Path | None = None
+    if settings.smtp_host and settings.digest_to:
+        try:
+            send_digest(html, subject, settings, smtp_factory=smtp_factory)
+            delivered = True
+        except Exception as exc:  # neúspěch nesmí ztratit leady
+            logger.error("Odeslání digestu selhalo (%s) — stav neukládám, zkusí se příště.", exc)
+    else:
+        preview_path = resolve_path("data/digest_preview.html")
+        preview_path.write_text(html, encoding="utf-8")
+        logger.warning(
+            "SMTP/adresát nenastaven — digest neodeslán (náhledový režim). Náhled: %s", preview_path
+        )
+
+    # 6) Stav uložíme jen po skutečném odeslání (jinak se leady zkusí příště).
+    if delivered:
+        store.mark_seen(selection.new, today)
+        store.save(today)
+
+    return RunReport(
+        cold_start=selection.cold_start,
+        window_count=len(leads),
+        new_count=len(selection.new),
+        skipped=selection.skipped,
+        digest_shown=summary.shown,
+        above_threshold=summary.above_threshold,
+        delivered=delivered,
+        preview_path=preview_path,
+        subject=subject,
+    )
 
 
 def main() -> None:
@@ -40,67 +131,21 @@ def main() -> None:
     print("== vondrart lead-finder ==")
     print(f"Lokality: {', '.join(loc.name for loc in targets.localities)}")
     print(f"NACE: {', '.join(n.code for n in targets.nace)}")
-    print(f"Stáří firem: posledních {targets.max_age_days} dní")
-    print(f"Kontrola kraje (kodKraje): {targets.kraj_codes or 'vypnuto'}\n")
+    print(f"Stáří firem: posledních {targets.max_age_days} dní | práh skóre: {targets.score_threshold}\n")
 
-    # M1 — sběr
-    source = AresSource(targets, today=today)
-    try:
-        leads = source.fetch()
-    finally:
-        source.client.close()
+    report = run(settings, targets, today=today)
 
-    # M2 — dedup proti uloženému stavu
-    store = SeenStore(resolve_path(settings.seen_path))
-    selection = store.select_new(leads, targets.max_new_per_run)
-
-    if selection.cold_start:
-        print("(první běh — cold start; stav byl prázdný)\n")
+    if report.cold_start:
+        print("(první běh — cold start; stav byl prázdný)")
     print(
-        f"Ve výběrovém okně: {len(leads)} firem | "
-        f"nových (nevidělných): {len(selection.new)} | "
-        f"k zobrazení: {len(selection.to_notify)} | "
-        f"oříznuto limitem: {selection.skipped}\n"
+        f"Okno: {report.window_count} firem | nových: {report.new_count} | "
+        f"k digestu: {report.digest_shown} (nad prahem {report.above_threshold}) | "
+        f"oříznuto limitem: {report.skipped}"
     )
-
-    # M3 — scoring přes Claude API (pokud je klíč; jinak se přeskočí)
-    if selection.to_notify and settings.anthropic_api_key:
-        scorer = Scorer.from_settings(settings, load_profile(settings))
-        scorer.score_leads(selection.to_notify)
-        selection.to_notify.sort(key=lambda l: (l.score or 0), reverse=True)
-    elif selection.to_notify:
-        logger.warning("ANTHROPIC_API_KEY není nastaven — scoring přeskočen (leady bez skóre).")
-
-    # M4 — sestavení digestu (řazeno dle skóre, odfiltrování pod prahem)
-    digest_leads = select_for_digest(selection.to_notify, targets.score_threshold)
-    summary = build_summary(today, selection.to_notify, digest_leads, targets.score_threshold)
-    html = render_digest(digest_leads, summary)
-    subject = build_subject(summary)
-    print(f"Digest: {summary.shown} k zobrazení (nad prahem {summary.above_threshold}, práh {summary.threshold}).")
-
-    # Odeslání přes SMTP, nebo náhled do souboru když SMTP není nastaveno.
-    delivered = False
-    if settings.smtp_host and settings.digest_to:
-        try:
-            send_digest(html, subject, settings)
-            print(f"Digest odeslán na {settings.digest_to}: {subject}")
-            delivered = True
-        except Exception as exc:  # neúspěch nesmí ztratit leady
-            logger.error("Odeslání digestu selhalo (%s) — stav neukládám, zkusí se příště.", exc)
-    else:
-        preview = resolve_path("data/digest_preview.html")
-        preview.write_text(html, encoding="utf-8")
-        logger.warning(
-            "SMTP/adresát nenastaven — digest neodeslán (náhledový režim). Náhled: %s", preview
-        )
-
-    # Stav uložíme jen po skutečném odeslání (jinak se leady zkusí příště).
-    if delivered:
-        store.mark_seen(selection.new, today)
-        store.save(today)
-        print(f"Stav uložen: celkem viděno {store.seen_count} firem ({store.path}).")
-    else:
-        logger.info("Stav neuložen (digest neodeslán / náhledový režim).")
+    if report.delivered:
+        print(f"Digest odeslán: {report.subject}")
+    elif report.preview_path:
+        print(f"Náhled digestu uložen: {report.preview_path}")
 
 
 if __name__ == "__main__":

@@ -179,6 +179,6 @@ podklady a o oslovení rozhoduje člověk. Klíče se **nikdy** necommitují (`.
 2. ✅ **Dedup + storage** (`data/seen.json`, cold start)
 3. ✅ **Scoring** (Claude API, JSON výstup, retry)
 4. ✅ **Digest e-mail** (Jinja2 + SMTP)
-5. ⬜ Lokální end-to-end běh
+5. ✅ **Lokální end-to-end běh** (`python main.py` projede celou pipeline)
 6. ⬜ GitHub Actions (cron + commit stavu + Secrets)
 7. ⬜ (Fáze 2) Webtrh poptávky jako druhý zdroj
